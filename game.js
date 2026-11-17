@@ -21,6 +21,37 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch
 const countIn = (obj, cat) => cat.w.reduce((a, w) => a + (obj[w[0]] ? 1 : 0), 0);
 const countAll = obj => Object.keys(obj).length;
 
+// ===== セーブを QRコード用の バイトに する / もどす =====
+const ALLW = CATS.flatMap(c => c.w.map(w => w[0]));
+const NB = n => Math.ceil(n / 8);
+function encodeSave(s) {
+  const bits = (n, f) => { const b = new Uint8Array(NB(n)); for (let i = 0; i < n; i++) if (f(i)) b[i >> 3] |= 1 << (i & 7); return b; };
+  const own = bits(100, i => s.own.indexOf(i) >= 0), q = bits(ALLW.length, i => s.qok[ALLW[i]]), k = bits(ALLW.length, i => s.sok[ALLW[i]]), p = bits(CATS.length, i => s.pass[i]);
+  const best = new Uint8Array(NB(CATS.length * 4));
+  CATS.forEach((c, i) => { const v = Math.min(15, s.best[i] == null ? 15 : s.best[i]); best[i >> 1] |= v << ((i & 1) * 4); });
+  const ene = Math.min(65535, s.ene);
+  const head = [0x45, 0x41, 1, ene >> 8, ene & 255, s.fav >= 0 ? s.fav : 255, s.free ? 1 : 0];
+  const body = [...head, ...own, ...q, ...k, ...best, ...p];
+  let sum = 0; body.forEach(v => { sum = (sum * 31 + v) & 255; });
+  return new Uint8Array([...body, sum]);
+}
+function decodeSave(b) {
+  b = Array.from(b);
+  if (b.length < 8 || b[0] !== 0x45 || b[1] !== 0x41) throw new Error('えいたんエイリアンの QRコードでは ないみたい');
+  if (b[2] !== 1) throw new Error('このQRコードは よめない バージョンだよ');
+  let sum = 0; b.slice(0, -1).forEach(v => { sum = (sum * 31 + v) & 255; });
+  if (sum !== b[b.length - 1]) throw new Error('QRコードが うまく よめなかったよ。もういちど ためしてね');
+  let o = 7; const take = n => { const r = b.slice(o, o + NB(n)); o += NB(n); return i => !!(r[i >> 3] & (1 << (i & 7))); };
+  const own = take(100), q = take(ALLW.length), k = take(ALLW.length), bestR = b.slice(o, o + NB(CATS.length * 4)); o += NB(CATS.length * 4); const p = take(CATS.length);
+  const s = fresh(); s.ene = (b[3] << 8) | b[4]; s.fav = b[5] === 255 ? -1 : b[5]; s.free = !!(b[6] & 1);
+  for (let i = 0; i < 100; i++) if (own(i)) s.own.push(i);
+  ALLW.forEach((w, i) => { if (q(i)) s.qok[w] = 1; if (k(i)) s.sok[w] = 1; });
+  CATS.forEach((c, i) => { const v = (bestR[i >> 1] >> ((i & 1) * 4)) & 15; if (v <= 10) s.best[i] = v; if (p(i)) s.pass[i] = 1; });
+  if (s.fav >= 0 && s.own.indexOf(s.fav) < 0) s.fav = s.own.length ? s.own[0] : -1;
+  return s;
+}
+const saveSummary = s => 'なかま ' + s.own.length + ' / 100　えねるぎー ' + s.ene + '<br>しけん ' + countAll(s.qok) + ' / ' + TOTAL + '　にんてい ' + countAll(s.sok) + ' / ' + TOTAL + '　ごうかく ' + Object.keys(s.pass).length + ' / ' + CATS.length;
+
 // ===== 画面サイズ =====
 const stage = document.getElementById('stage'), screensEl = document.getElementById('screens'), fxEl = document.getElementById('fx'), modalEl = document.getElementById('modal'), bgEl = document.getElementById('bg');
 let SCALE = 1;
@@ -749,7 +780,7 @@ function zukan() {
 // ===================== せってい =====================
 function settings() {
   openModal(m => {
-    const p = place($('<div class="panel mpanel"></div>'), 380, 140, 520, 440);
+    const p = place($('<div class="panel mpanel"></div>'), 380, 110, 520, 500);
     const tag = $('<div class="title-tag" style="cursor:pointer">せってい</div>'); p.appendChild(tag);
     let taps = 0, last = 0;
     tag.addEventListener('click', () => { const now = Date.now(); taps = now - last < 1500 ? taps + 1 : 1; last = now; tag.animate([{ transform: 'translateX(-50%) scale(1.12)' }, { transform: 'translateX(-50%)' }], { duration: 150 }); if (taps >= 10 && taps < 20) chime('flip'); if (taps >= 20) { taps = 0; chime('sparkle'); debugPanel(); } });
@@ -761,8 +792,99 @@ function settings() {
     };
     row('BGM', 'bgm', 50, () => { if (S.bgm) { ac(); startBgm(); } else stopBgm(); });
     row('こうかおん', 'se', 130);
-    p.appendChild(btn('データを けす', 'peach', 110, 230, 300, 64, () => confirmBox('ほんとうに けす？<br>えねるぎーも なかまも<br>ぜんぶ きえるよ', 'けす', 'やめる', () => confirmBox('さいごの かくにん。<br>ほんとうに けしても いい？', 'けす', 'やめる', () => { const b = S.bgm, s = S.se; S = fresh(); S.bgm = b; S.se = s; save(); title(); }, 300), 320)));
-    p.appendChild(btn('とじる', 'white', 110, 330, 300, 64, closeModal, 'tap'));
+    p.appendChild(btn('QRコードで かきだす', 'sky', 70, 222, 380, 64, qrOut));
+    p.appendChild(btn('データを けす', 'peach', 70, 306, 380, 64, () => confirmBox('ほんとうに けす？<br>えねるぎーも なかまも<br>ぜんぶ きえるよ', 'けす', 'やめる', () => confirmBox('さいごの かくにん。<br>ほんとうに けしても いい？', 'けす', 'やめる', () => { const b = S.bgm, s = S.se; S = fresh(); S.bgm = b; S.se = s; save(); title(); }, 300), 320)));
+    p.appendChild(btn('とじる', 'white', 70, 390, 380, 64, closeModal, 'tap'));
+    m.appendChild(p);
+  });
+}
+
+// ===================== QRコード（かきだし・よみこみ） =====================
+function drawQR(canvas, bytes, size) {
+  const qr = window.qrcode(0, 'M'); qr.addData(String.fromCharCode(...bytes), 'Byte'); qr.make();
+  const n = qr.getModuleCount(), q = 4, cell = Math.max(2, Math.floor(size / (n + q * 2)));
+  canvas.width = canvas.height = (n + q * 2) * cell;
+  const c = canvas.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, canvas.width, canvas.height); c.fillStyle = '#3d3157';
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (qr.isDark(y, x)) c.fillRect((x + q) * cell, (y + q) * cell, cell, cell);
+}
+const nowText = () => { const d = new Date(), z = n => String(n).padStart(2, '0'); return d.getFullYear() + '/' + z(d.getMonth() + 1) + '/' + z(d.getDate()) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()); };
+function qrOut() {
+  openModal(m => {
+    const p = place($('<div class="panel mpanel"></div>'), 150, 60, 980, 600);
+    p.appendChild($('<div class="title-tag">QRコードで かきだす</div>'));
+    const fid = favId();
+    if (S.own.length) p.appendChild(makeAlien(fid, 200, 150, 50, false));
+    const info = place($('<div class="abs qrinfo"></div>'), 40, 270, 480, 200);
+    const when = nowText();
+    info.innerHTML = '<div class="qi-h">' + (S.own.length ? esc(AL[fid].n) + ' と なかまたち' : 'まだ なかまが いないよ') + '</div><div class="qi-b">' + saveSummary(S) + '</div><div class="qi-t">' + when + ' の データ</div>';
+    p.appendChild(info);
+    const cv = document.createElement('canvas'); cv.className = 'qrcv'; drawQR(cv, encodeSave(S), 420); p.appendChild(cv);
+    p.appendChild(place($('<div class="abs qrnote">この QRコードで、いまの データを ふっかつ できるよ</div>'), 540, 462, 400, 30));
+    p.appendChild(btn('がぞうで ほぞん', 'sky', 160, 516, 300, 62, () => saveCard(cv, when)));
+    p.appendChild(btn('とじる', 'white', 520, 516, 300, 62, closeModal, 'tap'));
+    m.appendChild(p);
+  });
+}
+function saveCard(qrcv, when) {
+  const W = 900, H = 520, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+  const gr = x.createLinearGradient(0, 0, W, H); gr.addColorStop(0, '#f3ecff'); gr.addColorStop(1, '#e3f7f0'); x.fillStyle = gr; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#fff'; x.fillRect(470, 40, 400, 400); x.drawImage(qrcv, 480, 50, 380, 380);
+  const font = s => s + 'px ZMG, "Zen Maru Gothic", sans-serif';
+  x.fillStyle = '#5b4b7a'; x.font = '900 ' + font(40); x.fillText('えいたんエイリアン', 40, 80);
+  x.font = '700 ' + font(24); x.fillText('セーブデータ', 40, 120);
+  const lines = ['なかま ' + S.own.length + ' / 100', 'えねるぎー ' + S.ene, 'しけん ' + countAll(S.qok) + ' / ' + TOTAL + '　にんてい ' + countAll(S.sok) + ' / ' + TOTAL, 'ごうかく ' + Object.keys(S.pass).length + ' / ' + CATS.length];
+  x.font = '700 ' + font(22); lines.forEach((t, i) => x.fillText(t, 40, 170 + i * 36, 400));
+  x.fillStyle = '#8a7aa8'; x.font = '700 ' + font(18); x.fillText(when + ' の データ', 40, 326, 400);
+  const done = () => { const a = document.createElement('a'); a.download = 'eitan-save.png'; a.href = c.toDataURL('image/png'); document.body.appendChild(a); a.click(); a.remove(); };
+  if (S.own.length) { const im = new Image(); im.onload = () => { x.drawImage(im, 150, 344, 160, 160); done(); }; im.onerror = done; im.src = alienSrc(favId()); } else done();
+}
+function readQRFromImage(file, cb) {
+  const img = new Image(), cv = document.createElement('canvas');
+  img.onload = () => {
+    const k = Math.min(1, 1600 / Math.max(img.width, img.height)); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+    const c = cv.getContext('2d', { willReadFrequently: true }); c.drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(img.src);
+    const r = window.jsQR(c.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height);
+    cb(r && r.binaryData ? r.binaryData : null);
+  };
+  img.onerror = () => cb(null);
+  img.src = URL.createObjectURL(file);
+}
+function qrIn() {
+  let stream = null, raf = 0, stopped = false;
+  const stopCam = () => { stopped = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; };
+  openModal(m => {
+    const p = place($('<div class="panel mpanel"></div>'), 240, 60, 800, 620);
+    p.appendChild($('<div class="title-tag">QRコードから ふっかつ</div>'));
+    const vbox = place($('<div class="abs qrcam"><video playsinline muted></video><div class="qrcam-msg">「PNGから よみこむ」で、ほぞんした<br>QRコードの がぞうを えらんでね<br>カメラでも よみこめるよ</div></div>'), 160, 46, 480, 360);
+    p.appendChild(vbox);
+    const vd = vbox.querySelector('video'), msg = place($('<div class="abs qrmsg"></div>'), 40, 412, 720, 32);
+    p.appendChild(msg);
+    const fileIn = $('<input type="file" accept="image/png,image/*" style="display:none">'); p.appendChild(fileIn);
+    const tryBytes = bin => { let s; try { s = decodeSave(bin); } catch (e) { msg.textContent = e.message; se('ng', 0.4); return false; } stopCam(); confirmRestore(s); return true; };
+    fileIn.addEventListener('change', () => { const f = fileIn.files[0]; fileIn.value = ''; if (!f) return; msg.textContent = 'よみこみ ちゅう…'; readQRFromImage(f, bin => { if (!bin) { msg.textContent = 'QRコードが 見つからなかったよ'; se('ng', 0.4); } else tryBytes(bin); }); });
+    const camB = btn('カメラで よみこむ', 'white', 420, 452, 340, 62, async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { msg.textContent = 'この パソコンでは カメラが つかえないよ。がぞうから よみこんでね'; return; }
+      try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); } catch (e) { msg.textContent = 'カメラが つかえなかったよ。がぞうから よみこんでね'; return; }
+      stopped = false; vd.srcObject = stream; vd.play(); vbox.classList.add('on'); msg.textContent = 'カメラに QRコードを 見せてね';
+      const cv = document.createElement('canvas'), c = cv.getContext('2d', { willReadFrequently: true });
+      const loop = () => { if (stopped) return; if (vd.videoWidth) { cv.width = vd.videoWidth; cv.height = vd.videoHeight; c.drawImage(vd, 0, 0); const r = window.jsQR(c.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height); if (r && r.binaryData && tryBytes(r.binaryData)) return; } raf = requestAnimationFrame(loop); };
+      loop();
+    });
+    const fileB = btn('PNGから よみこむ', 'mint', 40, 452, 340, 62, () => fileIn.click());
+    p.append(camB, fileB);
+    p.appendChild(btn('やめる', 'white', 250, 534, 300, 58, () => { stopCam(); debugPanel(); }, 'tap'));
+    m.appendChild(p);
+  });
+  window.__EA_qrTry = bin => { try { const s = decodeSave(bin); stopCam(); confirmRestore(s); return true; } catch (e) { return e.message; } };
+}
+function confirmRestore(s) {
+  openModal(m => {
+    const p = place($('<div class="panel mpanel"></div>'), 290, 150, 700, 420);
+    p.appendChild($('<div class="title-tag">この データで つづける？</div>'));
+    p.appendChild(place($('<div class="mtext" style="font-size:22px">' + saveSummary(s) + '</div>'), null, 50));
+    p.appendChild(place($('<div class="mtext" style="font-size:18px;color:#e46f9f">いま この パソコンに ある データは きえて、<br>QRコードの データに いれかわるよ</div>'), null, 160));
+    p.appendChild(btn('やめる', 'white', 60, 320, 270, 68, debugPanel, 'tap'));
+    p.appendChild(btn('いれかえる', 'pink', 370, 320, 270, 68, () => { const b = S.bgm, e = S.se; S = s; S.bgm = b; S.se = e; save(); closeModal(); se('cheer', 0.45); chime('sparkle'); if (S.free) home(); else title(); }));
     m.appendChild(p);
   });
 }
@@ -770,9 +892,9 @@ function settings() {
 // ===================== デバッグモード =====================
 function debugPanel() {
   openModal(m => {
-    const p = place($('<div class="panel mpanel dbg"></div>'), 300, 60, 680, 600);
+    const p = place($('<div class="panel mpanel dbg"></div>'), 300, 50, 680, 624);
     p.appendChild($('<div class="title-tag" style="background:linear-gradient(180deg,#9fb7d6,#7d97bd)">デバッグモード</div>'));
-    const st = place($('<div class="mtext" style="font-size:18px"></div>'), null, 38);
+    const st = place($('<div class="mtext" style="font-size:17px;line-height:1.5"></div>'), null, 34);
     const upd = () => { st.innerHTML = 'えねるぎー ' + S.ene + '　なかま ' + S.own.length + '/100　しけん ' + countAll(S.qok) + '/' + TOTAL + '　にんてい ' + countAll(S.sok) + '/' + TOTAL + '<br>ごうかく ' + Object.keys(S.pass).length + '/' + CATS.length + '　むりょうがちゃ ' + (S.free ? 'つかった' : 'まだ'); };
     upd(); p.appendChild(st);
     const allW = () => CATS.flatMap(c => c.w.map(w => w[0]));
@@ -788,13 +910,15 @@ function debugPanel() {
       ['きろく リセット', 'peach', () => { S.qok = {}; S.sok = {}; S.best = {}; S.pass = {}; }],
       ['むりょうがちゃ もどす', 'peach', () => { S.free = false; }],
       ['コンプえんしゅつ', 'sky', () => { closeModal(); complete(); return true; }],
-      ['がちゃへ', 'sky', () => { closeModal(); gacha({}); return true; }]
+      ['がちゃへ', 'sky', () => { closeModal(); gacha({}); return true; }],
+      ['QRコードで かきだす', 'sky', () => { qrOut(); return true; }],
+      ['QRコードから ふっかつ', 'mint', () => { qrIn(); return true; }]
     ];
     acts.forEach((a, i) => {
-      const b = btn(a[0], a[1], 40 + (i % 2) * 310, 104 + Math.floor(i / 2) * 70, 290, 58, () => { const leave = a[2](); save(); if (leave) return; upd(); b.animate([{ transform: 'scale(.94)' }, { transform: 'none' }], { duration: 200 }); }, 'tap');
+      const b = btn(a[0], a[1], 40 + (i % 2) * 310, 98 + Math.floor(i / 2) * 64, 290, 54, () => { const leave = a[2](); save(); if (leave) return; upd(); b.animate([{ transform: 'scale(.94)' }, { transform: 'none' }], { duration: 200 }); }, 'tap');
       b.style.fontSize = '20px'; p.appendChild(b);
     });
-    p.appendChild(btn('とじる', 'white', 190, 526, 300, 58, () => { closeModal(); home(); }, 'tap'));
+    p.appendChild(btn('とじる', 'white', 190, 552, 300, 52, () => { closeModal(); home(); }, 'tap'));
     m.appendChild(p);
   });
 }
@@ -808,5 +932,5 @@ const go = () => title();
 if (document.fonts && document.fonts.ready) { let done = false; document.fonts.ready.then(() => { if (!done) { done = true; go(); } }); setTimeout(() => { if (!done) { done = true; go(); } }, 1500); }
 else go();
 // テスト用
-window.__EA = { get S() { return S; }, set S(v) { S = v; }, save, home, select, quiz, spell, gacha, zukan, title, learn, result };
+window.__EA = { get S() { return S; }, set S(v) { S = v; }, save, encodeSave, decodeSave, qrOut, qrIn, settings, home, select, quiz, spell, gacha, zukan, title, learn, result };
 })();
