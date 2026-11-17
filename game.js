@@ -106,6 +106,7 @@ function show(build) {
   closeModal();
   const scr = $('<div class="screen"></div>'); scr._timers = []; cur = scr;
   screensEl.appendChild(scr); build(scr);
+  requestAnimationFrame(() => autoFit(scr)); setTimeout(() => autoFit(scr), 700);
 }
 function later(fn, ms) { const s = cur; const id = setTimeout(() => { if (cur === s) fn(); }, ms); s._timers.push(id); return id; }
 function setBg(name, dim) { bgEl.style.backgroundImage = 'url(' + IMG('images/bg/' + name + '.webp') + ')'; bgEl.classList.toggle('dim', !!dim); }
@@ -120,6 +121,31 @@ function backBtn(fn) { return btn('<span class="arw"></span>もどる', 'white b
 function popIn(el, delay, from) {
   el.animate([{ transform: from || 'translateY(40px) scale(.85)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 520, delay: delay || 0, easing: 'cubic-bezier(.3,1.5,.5,1)', fill: 'backwards' });
   return el;
+}
+// ===== 文字が わくから はみ出さないように 自動で ちいさくする =====
+const FIT_SEL = '.btn,.pill,.ptag,.sinfo,.counter,.rene,.title-tag,.newtag,.zn,.grow,.ccard .nm,.ccard .ft,.answer,.scr-title,.rmsg,.gnote,.gname,.zname,.qword,.stamp,.toggle-row,.rrow .e,.rrow .j';
+const FIT_V = '.mtext,.gdesc,.zdesc,.bubble';
+function shrinkIn(el, ratio) {
+  [el, ...el.querySelectorAll('*')].forEach(e => { if (!e.childNodes.length) return; const fs = parseFloat(getComputedStyle(e).fontSize); if (fs) e.style.fontSize = Math.max(10, fs * ratio) + 'px'; });
+}
+function autoFit(root) {
+  if (!root) return;
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    root.querySelectorAll(FIT_SEL).forEach(el => {
+      if (!el.offsetParent || el.clientWidth < 4) return;
+      const cs = getComputedStyle(el), pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      let need = el.scrollWidth;
+      if (cs.display === 'flex' && cs.flexDirection !== 'column') { need = pad + [...el.children].reduce((a, c) => a + c.scrollWidth, 0) + (parseFloat(cs.columnGap) || 0) * Math.max(0, el.children.length - 1); if (cs.justifyContent === 'space-between') need = Math.max(need, el.scrollWidth); }
+      if (need > el.clientWidth + 1) { shrinkIn(el, Math.max(0.6, (el.clientWidth - 2) / need)); changed = true; }
+    });
+    root.querySelectorAll(FIT_V).forEach(el => {
+      if (!el.offsetParent || el.clientHeight < 4) return;
+      if (el.classList.contains('bubble')) return;
+      if (el.scrollHeight > el.clientHeight + 1) { shrinkIn(el, 0.92); changed = true; }
+    });
+    if (!changed) break;
+  }
 }
 // ===== うかぶ ちり =====
 (() => { const d = document.getElementById('dust');
@@ -165,7 +191,7 @@ function makeBubble(x, bottomY, w, tailX, H) {
   const b = $('<div class="bubble"></div>'); place(b, x); b.style.width = 'max-content'; b.style.maxWidth = w + 'px'; b.style.minWidth = Math.max(120, (tailX || 40) + 60) + 'px'; b.style.bottom = ((H || 720) - bottomY) + 'px';
   if (tailX != null) { b.style.setProperty('--tx', tailX + 'px'); b.style.setProperty('--bo', (tailX + 10) + 'px 100%'); }
   let t = null;
-  b.say = (text, ms) => { b.textContent = text; b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); clearTimeout(t); t = setTimeout(() => b.classList.remove('on'), ms || 3000); };
+  b.say = (text, ms) => { b.textContent = text; b.style.fontSize = ''; b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); if (b.scrollWidth > b.clientWidth + 1) b.style.fontSize = '17px'; clearTimeout(t); t = setTimeout(() => b.classList.remove('on'), ms || 3000); };
   return b;
 }
 const line = (id, sit) => pick(LINES[AL[id].p][sit]);
@@ -184,8 +210,10 @@ function openModal(build) {
   modalEl.innerHTML = ''; modalEl.classList.add('on');
   modalEl.appendChild($('<div class="mback"></div>'));
   build(modalEl);
+  requestAnimationFrame(() => autoFit(modalEl));
 }
 function closeModal() { modalEl.innerHTML = ''; modalEl.classList.remove('on'); }
+if (document.fonts) document.fonts.addEventListener && document.fonts.addEventListener('loadingdone', () => { autoFit(cur); autoFit(modalEl); });
 function confirmBox(text, yes, no, onYes, h) {
   openModal(m => {
     const H = h || 300, p = place($('<div class="panel mpanel"></div>'), 340, (720 - H) / 2, 600, H);
@@ -241,7 +269,7 @@ function home() {
     enePill(scr);
     const al = makeAlien(fid, 380, 140, 170, true); scr.appendChild(al);
     const bub = makeBubble(150, 186, 380, 60); scr.appendChild(bub); wireTap(al, bub, scr);
-    const fp = $('<div class="pill"><span class="lbl">おきにいり</span><span></span></div>'); place(fp, 200, 606, 260); fp.style.justifyContent = 'center'; fp.lastChild.textContent = AL[fid].n; scr.appendChild(fp);
+    const fp = $('<div class="pill"><span class="lbl">おきにいり</span><span></span></div>'); place(fp, 180, 606, 300); fp.style.justifyContent = 'center'; fp.lastChild.textContent = AL[fid].n; fp.lastChild.style.fontSize = fitSize(AL[fid].n, 170, 24, 14) + 'px'; scr.appendChild(fp);
     const tops = [120, 240, 360];
     [['れんしゅう', 'sky', 'カードで おぼえる', 'learn'], ['しけん', 'mint', '4たくで チャレンジ', 'quiz'], ['にんてい', 'pink', 'スペルを かいて ごうかく', 'spell']].forEach((d, i) => {
       popIn(scr.appendChild(btn(d[0] + '<span class="sub">' + d[2] + '</span>', d[1] + ' col menu-big', null, tops[i], null, null, () => select(d[3]))), 80 + i * 80, 'translateX(120px) scale(.9)');
@@ -722,7 +750,9 @@ function zukan() {
 function settings() {
   openModal(m => {
     const p = place($('<div class="panel mpanel"></div>'), 380, 140, 520, 440);
-    p.appendChild($('<div class="title-tag">せってい</div>'));
+    const tag = $('<div class="title-tag" style="cursor:pointer">せってい</div>'); p.appendChild(tag);
+    let taps = 0, last = 0;
+    tag.addEventListener('click', () => { const now = Date.now(); taps = now - last < 1500 ? taps + 1 : 1; last = now; tag.animate([{ transform: 'translateX(-50%) scale(1.12)' }, { transform: 'translateX(-50%)' }], { duration: 150 }); if (taps >= 10 && taps < 20) chime('flip'); if (taps >= 20) { taps = 0; chime('sparkle'); debugPanel(); } });
     const row = (label, key, top, fn) => {
       const r = place($('<div class="toggle-row"><span class="tl">' + label + '</span><div class="tg"><i></i></div></div>'), null, top);
       const tg = r.querySelector('.tg'); tg.classList.toggle('on', !!S[key]);
@@ -733,6 +763,38 @@ function settings() {
     row('こうかおん', 'se', 130);
     p.appendChild(btn('データを けす', 'peach', 110, 230, 300, 64, () => confirmBox('ほんとうに けす？<br>えねるぎーも なかまも<br>ぜんぶ きえるよ', 'けす', 'やめる', () => confirmBox('さいごの かくにん。<br>ほんとうに けしても いい？', 'けす', 'やめる', () => { const b = S.bgm, s = S.se; S = fresh(); S.bgm = b; S.se = s; save(); title(); }, 300), 320)));
     p.appendChild(btn('とじる', 'white', 110, 330, 300, 64, closeModal, 'tap'));
+    m.appendChild(p);
+  });
+}
+
+// ===================== デバッグモード =====================
+function debugPanel() {
+  openModal(m => {
+    const p = place($('<div class="panel mpanel dbg"></div>'), 300, 60, 680, 600);
+    p.appendChild($('<div class="title-tag" style="background:linear-gradient(180deg,#9fb7d6,#7d97bd)">デバッグモード</div>'));
+    const st = place($('<div class="mtext" style="font-size:18px"></div>'), null, 38);
+    const upd = () => { st.innerHTML = 'えねるぎー ' + S.ene + '　なかま ' + S.own.length + '/100　しけん ' + countAll(S.qok) + '/' + TOTAL + '　にんてい ' + countAll(S.sok) + '/' + TOTAL + '<br>ごうかく ' + Object.keys(S.pass).length + '/' + CATS.length + '　むりょうがちゃ ' + (S.free ? 'つかった' : 'まだ'); };
+    upd(); p.appendChild(st);
+    const allW = () => CATS.flatMap(c => c.w.map(w => w[0]));
+    const acts = [
+      ['えねるぎー +100', 'lemon', () => { S.ene += 100; }],
+      ['えねるぎー +2000', 'lemon', () => { S.ene += 2000; }],
+      ['えねるぎー 0', 'white', () => { S.ene = 0; }],
+      ['なかま ぜんいん', 'pink', () => { S.own = [...Array(100).keys()]; S.free = true; if (S.fav < 0) S.fav = 0; }],
+      ['なかま 1たいだけ', 'white', () => { S.own = [S.fav >= 0 ? S.fav : 0]; S.fav = S.own[0]; S.free = true; }],
+      ['なかま 99たい', 'pink', () => { S.own = [...Array(99).keys()]; S.free = true; if (S.fav < 0 || S.fav > 98) S.fav = 0; }],
+      ['しけん ぜんぶ せいかい', 'mint', () => { allW().forEach(w => { S.qok[w] = 1; }); CATS.forEach((c, i) => { S.best[i] = 10; }); }],
+      ['にんてい ぜんぶ ごうかく', 'mint', () => { allW().forEach(w => { S.sok[w] = 1; }); CATS.forEach((c, i) => { S.pass[i] = 1; }); }],
+      ['きろく リセット', 'peach', () => { S.qok = {}; S.sok = {}; S.best = {}; S.pass = {}; }],
+      ['むりょうがちゃ もどす', 'peach', () => { S.free = false; }],
+      ['コンプえんしゅつ', 'sky', () => { closeModal(); complete(); return true; }],
+      ['がちゃへ', 'sky', () => { closeModal(); gacha({}); return true; }]
+    ];
+    acts.forEach((a, i) => {
+      const b = btn(a[0], a[1], 40 + (i % 2) * 310, 104 + Math.floor(i / 2) * 70, 290, 58, () => { const leave = a[2](); save(); if (leave) return; upd(); b.animate([{ transform: 'scale(.94)' }, { transform: 'none' }], { duration: 200 }); }, 'tap');
+      b.style.fontSize = '20px'; p.appendChild(b);
+    });
+    p.appendChild(btn('とじる', 'white', 190, 526, 300, 58, () => { closeModal(); home(); }, 'tap'));
     m.appendChild(p);
   });
 }

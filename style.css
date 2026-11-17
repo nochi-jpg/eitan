@@ -59,7 +59,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#2b2440;font-family:
 .back .arw{width:0;height:0;border-top:9px solid transparent;border-bottom:9px solid transparent;border-right:13px solid currentColor}
 
 /* ===== 上のピル（同じ高さ） ===== */
-.pill{position:absolute;height:60px;border-radius:30px;background:var(--glass);border:4px solid #fff;box-shadow:0 5px 0 rgba(120,96,170,.18);display:flex;align-items:center;gap:10px;padding:0 20px 0 10px;font-size:24px;font-weight:900;white-space:nowrap}
+.pill{position:absolute;height:60px;overflow:hidden;border-radius:30px;background:var(--glass);border:4px solid #fff;box-shadow:0 5px 0 rgba(120,96,170,.18);display:flex;align-items:center;gap:10px;padding:0 20px 0 10px;font-size:24px;font-weight:900;white-space:nowrap}
 .pill .lbl{font-size:16px;color:var(--ink2)}
 .ene-pill{right:28px;top:24px;width:230px}
 .ene-pill .num{margin-left:auto}
@@ -244,7 +244,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#2b2440;font-family:
 @keyframes panelUp{0%{opacity:0;transform:translateY(80px)}100%{opacity:1;transform:none}}
 .gname{position:absolute;left:0;right:0;top:34px;text-align:center;font-size:40px;font-weight:900;line-height:1}
 .gmeta{position:absolute;left:0;right:0;top:84px;height:32px;display:flex;justify-content:center;gap:12px}
-.ptag{height:32px;padding:0 16px;border-radius:16px;display:flex;align-items:center;font-size:17px;color:#fff;white-space:nowrap}
+.ptag{overflow:hidden;height:32px;padding:0 16px;border-radius:16px;display:flex;align-items:center;font-size:17px;color:#fff;white-space:nowrap}
 .ptag.no{background:#c5b8e8}
 .ptag.p-y{background:#8fdcc0}.ptag.p-n{background:#ffa98a}.ptag.p-j{background:#c9a6f2}.ptag.p-m{background:#9fb7d6}.ptag.p-k{background:#ffcf5c;color:#7a5a20}
 .gdesc{position:absolute;left:36px;right:36px;top:126px;height:52px;font-size:18px;line-height:1.45;text-align:center;color:var(--ink2);display:flex;align-items:center;justify-content:center}
@@ -281,7 +281,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#2b2440;font-family:
 /* ===== モーダル ===== */
 .mback{position:absolute;inset:0;background:rgba(70,55,110,.35);animation:fadeIn .25s both}
 @keyframes fadeIn{0%{opacity:0}}
-.mpanel{animation:mIn .45s cubic-bezier(.3,1.4,.5,1) both}
+.mpanel{background:#fffaff;backdrop-filter:none;-webkit-backdrop-filter:none;animation:mIn .45s cubic-bezier(.3,1.4,.5,1) both}
 @keyframes mIn{0%{opacity:0;transform:scale(.7)}100%{opacity:1;transform:none}}
 .mtext{position:absolute;left:30px;right:30px;text-align:center;font-size:24px;line-height:1.6}
 .setbtns .btn{width:160px;height:68px;font-size:24px}
@@ -297,3 +297,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#2b2440;font-family:
 .btn.ready{animation:readyglow 1.4s ease-in-out infinite}
 @keyframes readyglow{0%,100%{box-shadow:0 6px 0 var(--c3),0 0 0 0 rgba(255,214,94,.0),0 12px 22px rgba(110,90,160,.28)}50%{box-shadow:0 6px 0 var(--c3),0 0 0 10px rgba(255,214,94,.45),0 12px 22px rgba(110,90,160,.28)}}
 .btn.isfav{pointer-events:none;--c1:#ffe3ef;--c2:#ffc4dd;--c3:#f0a3c4;color:#e46f9f;text-shadow:none}
+/* 重なりの順番：えいりあん < UI < ふきだし */
+.screen>.alien{z-index:1}
+.screen>.panel,.screen>.pill,.screen>.btn,.screen>.sinfo,.screen>.counter,.screen>.side-info,.screen>.feedback,.screen>.boxes,.screen>.cards,.screen>.pager,.screen>.fcard{z-index:2}
+.screen>.bubble{z-index:3}
+.qpanel,.rpanel,.zdetail,.zgridwrap,.gpanel{background:rgba(255,253,251,.9)}
