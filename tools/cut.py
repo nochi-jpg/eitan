@@ -1,5 +1,9 @@
 from PIL import Image
 from scipy import ndimage
+import json,os
+OVR=json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'hole_overrides.json'))) if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)),'hole_overrides.json')) else {}
+TEX=float(os.environ.get('TEX','0.25'))
+DIAG={}
 import numpy as np
 src='/home/claude/eitan/assets_src/';out='/home/claude/eitan/images/'
 for i in range(1,11):
@@ -56,10 +60,38 @@ for i in range(1,11):
       op=ndimage.binary_opening(out0,iterations=6)
       reach=ndimage.binary_dilation(border_comp(op),iterations=7)&out0
       holes|=keep_big(out0&~reach,900)
+      # あなを 1つずつ しらべる：絵の具の むら（うすい色）が のこっている＝もともと白い ところ、まっさらな とうめい＝はいけいの すきま
+      hl,hn=ndimage.label(holes);decide=np.zeros_like(holes)
+      ov=OVR.get(str(n),{})
+      info=[]
+      for k in range(1,hn+1):
+        m=hl==k;area=int(m.sum());tex=float((al[m]>8).mean());cy,cx=[float(v) for v in ndimage.center_of_mass(m)]
+        auto=True
+        idx=len(info)+1
+        f=auto
+        if idx in ov.get('keep',[]): f=False
+        if idx in ov.get('fill',[]): f=True
+        info.append((idx,area,round(tex,2),int(cx),int(cy),f))
+        if f: decide|=m
+      DIAG[n]=(info,hl)
+      holes=decide
       fill=~ndimage.binary_dilation(low&~holes,iterations=2)
       a1=al[...,None]/255.0
       ca[...,:3]=np.where(fill[...,None],ca[...,:3]*a1+255*(1-a1),ca[...,:3]);ca[...,3]=np.where(fill,255,al)
       crop=Image.fromarray(ca.clip(0,255).astype(np.uint8),'RGBA')
+      if os.environ.get('DIAGOUT'):
+        from PIL import ImageDraw
+        info,hl=DIAG[n];bg=Image.new('RGBA',crop.size,(201,184,255,255));bg.alpha_composite(crop)
+        ov_=np.zeros((*hl.shape,4),np.uint8)
+        for (idx,area,tex,cx,cy,f) in info:
+          ov_[hl==idx]=((255,60,60,150) if f else (40,200,80,170)) if area>=120 else (0,0,0,0)
+        bg.alpha_composite(Image.fromarray(ov_,'RGBA'));d=ImageDraw.Draw(bg)
+        from PIL import ImageFont
+        fnt=ImageFont.load_default(size=26)
+        for (idx,area,tex,cx,cy,f) in info:
+          if area>=120: d.text((cx-8,cy-14),str(idx),fill=(0,0,0,255),font=fnt,stroke_width=3,stroke_fill=(255,255,255,255))
+        bg.convert('RGB').save(os.environ['DIAGOUT']+f'/{n:03d}.png')
+        open(os.environ['DIAGOUT']+f'/{n:03d}.txt','w').write(repr(info))
       w,h=crop.size;S=int(max(w,h)*1.08)
       can=Image.new('RGBA',(S,S),(0,0,0,0));can.paste(crop,((S-w)//2,S-h-(S-max(w,h))//2))
       can=can.resize((300,300),Image.LANCZOS)
